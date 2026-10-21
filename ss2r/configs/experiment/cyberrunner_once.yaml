@@ -1,0 +1,36 @@
+# @package _global_
+defaults:
+  - override /agent: once
+  - override /environment: cyberrunner_cpu
+  - _self_
+
+# The recovery prior is trained with cyberrunner_recovery_prior (or
+# cyberrunner_recovery_prior_adversary) and loaded with prior.checkpoint_path. Its R is
+# set in environment/cyberrunner_recovery.yaml and has to match environment/cyberrunner_cpu.yaml.
+prior:
+  experiment: cyberrunner_recovery_prior
+
+training:
+  # An environment step takes 1/60 seconds: 1000000 steps are about 4.6 hours.
+  num_timesteps: 1000000
+  action_repeat: 1
+  # The rewards, to count the goals afterwards.
+  store_trajectory: true
+
+agent:
+  # The prior sees the 30 history values, not the path points.
+  recovery_observation_size: 30
+  recovery_threshold: 0.9
+  # Horizon of cyberrunner_recovery_prior: 100 steps at 60 Hz.
+  recovery_horizon: 100
+  recovery_restart_rollouts: true
+  min_replay_size: 5000
+  num_critic_updates_per_actor_update: 2
+  # As the SAC behavior policy we ran on the rig.
+  pessimistic_q: true
+  # The worst progress reward per step is about -0.08: the ball rolling back at 0.5 m/s.
+  intervention_task_reward: -0.1
+  # Exploration bonus on the task reward, and the margin of the Q_R penalty, both in
+  # units of the ensemble's disagreement on the raw observation: walker_once's values.
+  optimism: 0.5
+  margin: 0.01
