@@ -1,7 +1,7 @@
 """Actor of ONCE: runs the policy on the (single, non-episodic) real system."""
 
 import time
-from typing import Any, Callable, Mapping, Tuple
+from typing import Any, Callable, Mapping, Optional, Tuple
 
 import jax
 import jax.numpy as jnp
@@ -18,7 +18,10 @@ from ss2r.benchmark_suites.mujoco_cpu import RealEnv
 
 
 def make_policy_step(
-    mbpo_network, recovery_network, observation_size: int
+    mbpo_network,
+    recovery_network,
+    observation_size: int,
+    recovery_observation_size: Optional[int] = None,
 ) -> Tuple[Callable, int]:
     """Creates the policy step, which takes the parameters as one flat vector.
 
@@ -27,7 +30,7 @@ def make_policy_step(
     """
     make_policy = make_recovery_filter_fn(mbpo_network, recovery_network)
     template = make_filter_params_template(
-        mbpo_network, recovery_network, observation_size
+        mbpo_network, recovery_network, observation_size, recovery_observation_size
     )
     flat_template, unravel_fn = ravel_pytree(template)
 
@@ -181,7 +184,10 @@ def run_actor(
         agent_cfg, prior_agent_cfg, env.observation_size, env.action_size
     )
     policy_step, num_params = make_policy_step(
-        mbpo_network, recovery_network, env.observation_size
+        mbpo_network,
+        recovery_network,
+        env.observation_size,
+        agent_cfg.get("recovery_observation_size"),
     )
     shared_params = SharedParams(num_params, shared_params_name)
     actor = Actor(env, policy_step, agent_cfg["chunk_size"], seed, record_state)

@@ -191,6 +191,12 @@ def make_learner(
             policy_params = recovery_policy_params
             normalizer_params = recovery_normalizer_params
         if c["init_normalizer_from_prior"]:
+            _check_same_structure(
+                recovery_normalizer_params,
+                normalizer_params,
+                "observation normalizer",
+                "The prior sees only a part of the observation.",
+            )
             # Statistics of the simulation, such that no observation starts with
             # a vanishing standard deviation.
             normalizer_params = recovery_normalizer_params

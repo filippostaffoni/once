@@ -63,7 +63,11 @@ class _SyncActor:
         record_state=False,
     ):
         env = mujoco_cpu.make(environment_cfg, action_repeat, seed)
-        policy_step, _ = make_policy_step(*networks, env.observation_size)
+        policy_step, _ = make_policy_step(
+            *networks,
+            env.observation_size,
+            agent_cfg.get("recovery_observation_size"),
+        )
         self._actor = Actor(
             env, policy_step, agent_cfg["chunk_size"], seed, record_state
         )
@@ -276,7 +280,10 @@ def train(
     actor: _AsyncActor | _SyncActor
     if c["asynchronous"]:
         _, num_params = make_policy_step(
-            mbpo_network, recovery_network, observation_size
+            mbpo_network,
+            recovery_network,
+            observation_size,
+            c.get("recovery_observation_size"),
         )
         actor = _AsyncActor(
             environment_cfg,

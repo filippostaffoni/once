@@ -43,6 +43,9 @@ optimism: 0.
 # worst reward of the environment).
 intervention_task_reward: 0.
 # Recovery prior.
+# The recovery prior sees the first this many values of the observation (null: all of
+# them), for a prior trained on a part of the real system's observation.
+recovery_observation_size: null
 # The behavior action is only taken if Q_R(s, a) >= recovery_threshold.
 recovery_threshold: 0.99
 # Q_R target: recovery_reward - 2 * penalty_scale * max(disagreement - margin, 0)
