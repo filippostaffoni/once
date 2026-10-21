@@ -1,6 +1,7 @@
 import functools
 from typing import Any, Callable, Mapping
 
+from ss2r.benchmark_suites.mujoco_cpu import cyberrunner
 from ss2r.benchmark_suites.mujoco_cpu.cartpole import CartpoleSwingupCPU, RealEnv
 from ss2r.benchmark_suites.mujoco_cpu.go_to_goal import GoToGoalCPU
 from ss2r.benchmark_suites.mujoco_cpu.walker import WalkerWalkCPU
@@ -14,6 +15,7 @@ from ss2r.benchmark_suites.safety_gym import recovery as go_to_goal_recovery
 
 _envs = {
     "CartpoleSwingupCPU": CartpoleSwingupCPU,
+    "CyberRunnerCPU": cyberrunner.CyberRunnerCPU,
     "GoToGoalCPU": GoToGoalCPU,
     "WalkerWalkCPU": WalkerWalkCPU,
 }
@@ -36,6 +38,8 @@ def get_recovery_fns(environment_cfg: Mapping[str, Any]) -> tuple[Callable, Call
     """The recovery reward and the constraint violation of an observation."""
     task_name = environment_cfg["task_name"]
     task_params = environment_cfg["task_params"]
+    recovery_reward_fn: Callable
+    violates_fn: Callable
     if task_name == "CartpoleSwingupCPU":
         recovery_reward_fn = functools.partial(
             cartpole_recovery.recovery_reward_fn,
@@ -70,6 +74,8 @@ def get_recovery_fns(environment_cfg: Mapping[str, Any]) -> tuple[Callable, Call
             walker_recovery.violates,
             hard_upright=task_params["hard_upright"],
         )
+    elif task_name == "CyberRunnerCPU":
+        recovery_reward_fn, violates_fn = cyberrunner.recovery_fns(task_params)
     else:
         raise ValueError(f"Unknown CPU environment {task_name}")
     return recovery_reward_fn, violates_fn
