@@ -80,3 +80,10 @@ def get_recovery_fns(environment_cfg: Mapping[str, Any]) -> tuple[Callable, Call
     else:
         raise ValueError(f"Unknown CPU environment {task_name}")
     return recovery_reward_fn, violates_fn
+
+
+def get_next_observation_fn(environment_cfg: Mapping[str, Any]) -> Callable:
+    """Corrects a batch of observations predicted by the model."""
+    if environment_cfg["task_name"] in ("CyberRunnerCPU", "CyberRunnerRig"):
+        return cyberrunner.next_observation_fn(environment_cfg["task_params"])
+    return lambda obs: obs

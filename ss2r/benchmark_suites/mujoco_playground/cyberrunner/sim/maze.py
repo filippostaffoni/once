@@ -47,13 +47,20 @@ def wall_segments(maze: Layout) -> Tuple[np.ndarray, np.ndarray]:
     return np.array(walls + edges, np.float32), np.array(half_width, np.float32)
 
 
+def segment_point_counts(waypoints: np.ndarray, distance: float) -> np.ndarray:
+    """Points of `interpolate_path` on each segment."""
+    waypoints = np.asarray(waypoints, dtype=np.float32)
+    lengths = np.linalg.norm(waypoints[1:] - waypoints[:-1], axis=1)
+    return np.floor(lengths / distance).astype(np.int32) + 1
+
+
 def interpolate_path(waypoints: np.ndarray, distance: float) -> np.ndarray:
     """Points every `distance` metres along the waypoints."""
     waypoints = np.asarray(waypoints, dtype=np.float32)
     segments = []
-    for start, end in zip(waypoints[:-1], waypoints[1:]):
+    counts = segment_point_counts(waypoints, distance)
+    for start, end, num_points in zip(waypoints[:-1], waypoints[1:], counts):
         v = end - start
-        num_points = int(np.floor(np.linalg.norm(v) / distance)) + 1
         line = np.linspace(
             0.0, 1.0, num_points, endpoint=False, dtype=np.float32
         ).reshape(num_points, 1)
@@ -65,8 +72,21 @@ def relative_path(
     points: jax.Array, ball_pos: jax.Array, num_points: int, step: int
 ) -> jax.Array:
     """Flattened [num_points * 2] path points relative to the ball."""
-    nearest = jnp.argmin(jnp.sum((points - ball_pos) ** 2, axis=1))
-    indices = jnp.clip(nearest + step * jnp.arange(num_points), 0, points.shape[0] - 1)
+    return path_from(
+        points, nearest_point(points, ball_pos), ball_pos, num_points, step
+    )
+
+
+def nearest_point(points: jax.Array, ball_pos: jax.Array) -> jax.Array:
+    """Index of the path point closest to the ball, through walls."""
+    return jnp.argmin(jnp.sum((points - ball_pos) ** 2, axis=1))
+
+
+def path_from(
+    points: jax.Array, index: jax.Array, ball_pos: jax.Array, num_points: int, step: int
+) -> jax.Array:
+    """Flattened [num_points * 2] path points from `index`, relative to the ball."""
+    indices = jnp.clip(index + step * jnp.arange(num_points), 0, points.shape[0] - 1)
     return (points[indices] - ball_pos).reshape(-1)
 
 

@@ -37,6 +37,52 @@ _RANDOMIZED_FIELDS = (
 )
 
 
+def path_progress_fn(layout: maze.Layout, num_rays: int) -> Callable:
+    """Path progress of a ball, as in the task's reward."""
+    seg_lengths, cum_distances = maze.compute_waypoint_distances(layout.waypoints)
+    return functools.partial(
+        maze.compute_path_progress_jax,
+        waypoints=jp.asarray(layout.waypoints),
+        seg_lengths=jp.asarray(seg_lengths),
+        cum_distances=jp.asarray(cum_distances),
+        walls_h=jp.asarray(layout.walls_h),
+        walls_v=jp.asarray(layout.walls_v),
+        holes=jp.asarray(layout.holes),
+        num_rays=num_rays,
+    )
+
+
+def relative_path_fn(
+    layout: maze.Layout,
+    num_path_points: int,
+    path_step: int,
+    path_distance: float,
+    num_rays: int,
+    visible_path: bool,
+) -> Callable:
+    """The path points of a ball. With `visible_path` they start from the stretch of path
+    the task's reward sees rather than from the nearest point, which can be behind a wall
+    and switches with the ball's noise between two stretches of the path. The nearest
+    point remains where nothing is visible and behind the path's start, where the rays
+    miss the first segment, collinear with the ball."""
+    points = jp.asarray(maze.interpolate_path(layout.waypoints, path_distance))
+    if not visible_path:
+        return lambda ball: maze.relative_path(points, ball, num_path_points, path_step)
+    progress = path_progress_fn(layout, num_rays)
+    counts = maze.segment_point_counts(layout.waypoints, path_distance)
+    offsets = jp.asarray(np.r_[0, np.cumsum(counts)[:-1]])
+    counts = jp.asarray(counts)
+
+    def relative_path(ball: jax.Array) -> jax.Array:
+        _, segment, along, _, found = progress(ball)
+        nearest = maze.nearest_point(points, ball)
+        visible = offsets[segment] + jp.floor(along * counts[segment]).astype(int)
+        index = jp.where(found & (nearest > 0), visible, nearest)
+        return maze.path_from(points, index, ball, num_path_points, path_step)
+
+    return relative_path
+
+
 class CyberRunner:
     """The maze task of playground's CyberRunner, on any system: observation, task reward,
     goal and R. Subclasses move the ball and measure it.
@@ -56,6 +102,7 @@ class CyberRunner:
         path_step: int = 50,
         path_distance: float = 0.0001,
         num_rays: int = 32,
+        visible_path: bool = False,
         max_episode_steps: int | None = None,
         recovery_hole_distance: float = recovery.RECOVERY_HOLE_DISTANCE,
         recovery_speed: float = recovery.RECOVERY_SPEED,
@@ -71,27 +118,18 @@ class CyberRunner:
         self._action_repeat = action_repeat
 
         # The playground env's functions, jitted for single states.
-        seg_lengths, cum_distances = maze.compute_waypoint_distances(
-            self._layout.waypoints
-        )
+        _, cum_distances = maze.compute_waypoint_distances(self._layout.waypoints)
         self._total_progress = 10.0 * float(cum_distances[-1])
-        self._path_progress = jax.jit(
-            functools.partial(
-                maze.compute_path_progress_jax,
-                waypoints=jp.asarray(self._layout.waypoints),
-                seg_lengths=jp.asarray(seg_lengths),
-                cum_distances=jp.asarray(cum_distances),
-                walls_h=jp.asarray(self._layout.walls_h),
-                walls_v=jp.asarray(self._layout.walls_v),
-                holes=jp.asarray(self._layout.holes),
-                num_rays=num_rays,
-            )
-        )
-        points = jp.asarray(
-            maze.interpolate_path(self._layout.waypoints, path_distance)
-        )
+        self._path_progress = jax.jit(path_progress_fn(self._layout, num_rays))
         self._relative_path = jax.jit(
-            lambda ball: maze.relative_path(points, ball, num_path_points, path_step)
+            relative_path_fn(
+                self._layout,
+                num_path_points,
+                path_step,
+                path_distance,
+                num_rays,
+                visible_path,
+            )
         )
         self.observation_size = history_length * cyberrunner.FRAME_SIZE + 2 * (
             num_path_points
@@ -353,6 +391,31 @@ def observed_ball(obs: Any, history_length: int = HISTORY_LENGTH) -> Tuple[Any, 
     balls = frames[..., 2:4]
     velocity = (balls[..., -1, :] - balls[..., 0, :]) / ((history_length - 1) * CTRL_DT)
     return balls[..., -1, :], velocity
+
+
+def next_observation_fn(task_params: Mapping[str, Any]) -> Callable:
+    """Corrects a batch of predicted observations: with `visible_path` their path points
+    are recomputed from their ball, as a jump of the path can't be predicted."""
+    if not task_params.get("visible_path", False):
+        return lambda obs: obs
+    history_length = task_params.get("history_length", HISTORY_LENGTH)
+    relative_path = jax.vmap(
+        relative_path_fn(
+            maze.get_layout(task_params.get("layout", "easy")),
+            task_params.get("num_path_points", 10),
+            task_params.get("path_step", 50),
+            task_params.get("path_distance", 0.0001),
+            task_params.get("num_rays", 32),
+            True,
+        )
+    )
+    frames_size = history_length * cyberrunner.FRAME_SIZE
+
+    def next_observation(obs: jax.Array) -> jax.Array:
+        ball, _ = observed_ball(obs, history_length)
+        return jp.concatenate([obs[..., :frames_size], relative_path(ball)], axis=-1)
+
+    return next_observation
 
 
 def recovery_fns(task_params: Mapping[str, Any]) -> Tuple[Callable, Callable]:

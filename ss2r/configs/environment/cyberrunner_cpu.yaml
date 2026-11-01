@@ -16,6 +16,9 @@ task_params:
   path_step: 50
   path_distance: 0.0001
   num_rays: 32
+  # Path points from the stretch of path the reward sees, not from the nearest point,
+  # which switches through walls with the ball's noise.
+  visible_path: true
   # No step limit: the ball is put back at the start only at the goal (and after a fall),
   # such that the behavior keeps learning where it got to.
   max_episode_steps: null

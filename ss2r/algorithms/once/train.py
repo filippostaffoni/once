@@ -248,6 +248,7 @@ def train(
         action_size=action_size,
         agent_cfg=agent_cfg,
         recovery_reward_fn=recovery_reward_fn,
+        next_observation_fn=mujoco_cpu.get_next_observation_fn(environment_cfg),
         violates_fn=violates_fn,
         action_repeat=action_repeat,
     )
