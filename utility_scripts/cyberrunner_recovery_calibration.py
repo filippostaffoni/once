@@ -55,11 +55,15 @@ def evaluate_run(run_dir, args, behavior: Dict[str, Any], keys, out) -> list:
     k_physics, k_reset = keys
     task, horizon, ranges = calibration.recovery_task(run_dir)
     env = calibration.make_recovery_env(task, ranges, k_physics, args.states)
-    history = task["history_length"] * cyberrunner.FRAME_SIZE
+    # The history, and the path points if the prior sees them (2 values each).
+    size = (
+        task["history_length"] * cyberrunner.FRAME_SIZE
+        + 2 * task.get("num_path_points", 0)
+    )
     resets = jax.jit(env.reset)(jax.random.split(k_reset, args.states))
     sets = {"reset": (resets, None, np.ones(args.states, bool))}
     for name, (states, actions, valid) in behavior.items():
-        states = calibration.as_recovery_states(states, history)
+        states = calibration.as_recovery_states(states, size)
         sets[name] = (states, actions, np.asarray(valid))
     # (states, action) pairs asked of Q_R; the behavior's action is the shield's question.
     queries = [("reset", "backup")] + [
@@ -67,7 +71,7 @@ def evaluate_run(run_dir, args, behavior: Dict[str, Any], keys, out) -> list:
     ]
     ckpts = _checkpoints(run_dir, args.every)
     networks, params = _load(run_dir, ckpts[0])
-    if params[0].mean.shape[-1] != history:
+    if params[0].mean.shape[-1] != size:
         raise ValueError(f"{run_dir}: Q_R sees {params[0].mean.shape[-1]} values")
     calibrator = calibration.Calibrator(env, networks, horizon)
     arrays: dict = {}

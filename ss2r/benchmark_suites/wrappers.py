@@ -321,6 +321,7 @@ class SPiDR(Wrapper):
         alpha,
         statistic="variance",
         disagreement_on="observation",
+        disagreement_size=None,
     ):
         super().__init__(env)
         if statistic not in ("variance", "std"):
@@ -331,6 +332,8 @@ class SPiDR(Wrapper):
             raise ValueError(f"Unknown disagreement_on {disagreement_on}")
         self.statistic = statistic
         self.disagreement_on = disagreement_on
+        # With "observation": only its first this many values (None: all of them).
+        self.disagreement_size = disagreement_size
         if hasattr(env, "sys"):
             self.perturbed_env = DomainRandomizationVmapWrapper(
                 env, randomzation_fn, augment_state=False
@@ -380,7 +383,7 @@ class SPiDR(Wrapper):
     def _disagreement_input(self, state: State) -> jax.Array:
         if self.disagreement_on == "state":
             return state.info["spidr_state"]
-        return _get_obs(state)
+        return _get_obs(state)[..., : self.disagreement_size]
 
     def _compute_disagreement(self, next_obs: jax.Array) -> jax.Array:
         if self.statistic == "std":
