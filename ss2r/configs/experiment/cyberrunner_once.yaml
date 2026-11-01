@@ -30,7 +30,10 @@ agent:
   pessimistic_q: true
   # The worst progress reward per step is about -0.08: the ball rolling back at 0.5 m/s.
   intervention_task_reward: -0.1
-  # Exploration bonus on the task reward, and the margin of the Q_R penalty, both in
-  # units of the ensemble's disagreement on the raw observation: walker_once's values.
+  # Exploration bonus on the task reward and margin of the Q_R penalty, in units of the
+  # ensemble's disagreement on the raw observation. Trained on 27k shielded transitions of
+  # a policy that rolls the ball through the maze, the ensemble disagrees by 0.0076 at
+  # the median: the bonus is then about 15% of the progress reward (0.024 per step), and
+  # the penalty only acts above the 99th percentile of the backup's own actions (0.018).
   optimism: 0.5
-  margin: 0.01
+  margin: 0.02
