@@ -74,3 +74,8 @@ chunk_size: 8
 publish_every: 1
 # Speed of the environment relative to real time. Null runs as fast as possible.
 realtime_factor: 1.0
+# With the actor on another machine (a robot): what the learner binds, what the actor
+# connects to, and the exchanges of policy and transitions per second at most.
+remote_bind: null
+remote_connect: null
+remote_exchange_hz: 10

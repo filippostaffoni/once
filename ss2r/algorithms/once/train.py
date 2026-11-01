@@ -27,6 +27,7 @@ from ss2r.algorithms.once.actor import (
 from ss2r.algorithms.once.filter import get_filter_params
 from ss2r.algorithms.once.learner import make_learner
 from ss2r.algorithms.once.networks import make_networks
+from ss2r.algorithms.once.remote import RemoteActor
 from ss2r.algorithms.once.shared_params import SharedParams
 from ss2r.algorithms.once.trajectory import TrajectoryWriter
 from ss2r.algorithms.sac.types import Metrics, Transition
@@ -71,6 +72,8 @@ def task_metrics(
 class _SyncActor:
     """Runs the actor in the learner's process, for debugging and tests."""
 
+    paused = False
+
     def __init__(
         self,
         environment_cfg,
@@ -106,6 +109,8 @@ class _SyncActor:
 
 class _AsyncActor:
     """Runs the actor in its own process, on the CPU."""
+
+    paused = False
 
     def __init__(
         self,
@@ -144,9 +149,9 @@ class _AsyncActor:
         # learner for the accelerator.
         actor_environ = {"JAX_PLATFORMS": "cpu"}
         if self._single_threaded:
-            actor_environ[
-                "XLA_FLAGS"
-            ] = "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
+            actor_environ["XLA_FLAGS"] = (
+                "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
+            )
         previous = {name: os.environ.get(name) for name in actor_environ}
         os.environ.update(actor_environ)
         try:
@@ -295,8 +300,16 @@ def train(
             },
         )
     record_state = trajectory_writer is not None
-    actor: _AsyncActor | _SyncActor
-    if c["asynchronous"]:
+    actor: _AsyncActor | _SyncActor | RemoteActor
+    if c.get("remote_bind"):
+        _, num_params = make_policy_step(
+            mbpo_network,
+            recovery_network,
+            observation_size,
+            c.get("recovery_observation_size"),
+        )
+        actor = RemoteActor(c["remote_bind"], num_params, c["remote_exchange_hz"])
+    elif c["asynchronous"]:
         _, num_params = make_policy_step(
             mbpo_network,
             recovery_network,
@@ -375,8 +388,9 @@ def train(
     try:
         actor.publish(policy_params(training_state))
         while env_steps < num_timesteps:
-            # Never wait for data, unless there is not enough to start learning.
-            waiting = control_steps < c["min_replay_size"]
+            # Never wait for data, unless there is not enough to start learning, or the
+            # system is paused.
+            waiting = control_steps < c["min_replay_size"] or actor.paused
             for chunk, stats in actor.get(block=waiting or not c["asynchronous"]):
                 training_state, behavior_buffer_state = insert(
                     training_state, behavior_buffer_state, _to_transition(chunk)
@@ -396,7 +410,7 @@ def train(
                         window[name] = max(window.get(name, 0.0), value)
                     else:
                         window[name] = window.get(name, 0.0) + value
-            if control_steps >= c["min_replay_size"]:
+            if control_steps >= c["min_replay_size"] and not actor.paused:
                 key, step_key = jax.random.split(key)
                 (
                     training_state,
@@ -420,6 +434,7 @@ def train(
                 next_log = (env_steps // log_every + 1) * log_every
                 steps = window["steps"]
                 elapsed = time.time() - window_start
+                elapsed = max(elapsed - window.get("counts/paused_s", 0.0), 1e-6)
                 metrics = {
                     f"training/{name}": float(value)
                     for name, value in jax.device_get(learner_metrics).items()
