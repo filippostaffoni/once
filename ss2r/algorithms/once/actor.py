@@ -147,6 +147,11 @@ class Actor:
         stats["in_recovery_set"] += float(info["in_recovery_set"])
         if "cost" in info:
             stats["cost"] = stats.get("cost", 0.0) + float(info["cost"])
+        # Task metrics of the environment: the maxima of some, the sums of its counts.
+        for name, value in info.get("maxima", {}).items():
+            stats[f"maxima/{name}"] = max(stats.get(f"maxima/{name}", value), value)
+        for name, value in info.get("counts", {}).items():
+            stats[f"counts/{name}"] = stats.get(f"counts/{name}", 0.0) + value
         if terminated:
             # The hard constraint was violated, the system has to be reset.
             stats["violations"] += 1

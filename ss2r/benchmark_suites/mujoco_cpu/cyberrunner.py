@@ -41,8 +41,8 @@ class CyberRunnerCPU:
     """Same model, observation and task reward as playground's CyberRunner.
 
     An episode never ends, unless the ball falls into a hole. In this case `terminated`
-    is returned and the caller should reset. At the goal, or after `max_episode_steps`
-    without reaching it, the ball is put back at the start, as on the robot.
+    is returned and the caller should reset. At the goal the ball is put back at the
+    start, as on the robot, and also after `max_episode_steps` without reaching it, if set.
     """
 
     def __init__(
@@ -56,7 +56,7 @@ class CyberRunnerCPU:
         path_step: int = 50,
         path_distance: float = 0.0001,
         num_rays: int = 32,
-        max_episode_steps: int = 3000,
+        max_episode_steps: int | None = None,
         recovery_hole_distance: float = recovery.RECOVERY_HOLE_DISTANCE,
         recovery_speed: float = recovery.RECOVERY_SPEED,
         action_repeat: int = 1,
@@ -83,7 +83,9 @@ class CyberRunnerCPU:
         self._delay = int(round(delay_ms / (1000.0 * constants.TIMESTEP)))
         self._num_commands = -(-self._delay // constants.FRAME_SKIP) + 1
         self._history_length = history_length
-        self._max_episode_steps = max_episode_steps
+        self._max_episode_steps = (
+            float("inf") if max_episode_steps is None else max_episode_steps
+        )
         self._recovery_hole_distance = recovery_hole_distance
         self._recovery_speed = recovery_speed
         self._action_repeat = action_repeat
@@ -93,6 +95,7 @@ class CyberRunnerCPU:
         seg_lengths, cum_distances = maze.compute_waypoint_distances(
             self._layout.waypoints
         )
+        self._total_progress = 10.0 * float(cum_distances[-1])
         self._path_progress = jax.jit(
             functools.partial(
                 maze.compute_path_progress_jax,
@@ -191,11 +194,18 @@ class CyberRunnerCPU:
             reward += step_reward
             if in_hole or at_goal or self._steps >= self._max_episode_steps:
                 break
+        # Task metrics: how far along the path the ball is (logged as its maximum), and
+        # the goals (counted).
+        info = {
+            "in_recovery_set": in_r,
+            "maxima": {"progress": self._path_fraction()},
+            "counts": {"goals": float(at_goal)},
+        }
         if not in_hole and (at_goal or self._steps >= self._max_episode_steps):
             obs = self.reset()
         else:
             obs = self._observation(ball_seen)
-        return obs, reward, in_hole, {"in_recovery_set": in_r}
+        return obs, reward, in_hole, info
 
     def _control_step(
         self, action: np.ndarray
@@ -281,6 +291,10 @@ class CyberRunnerCPU:
         """Path progress of the ball, -1 where no part of the path is visible."""
         progress, *_, found = self._path_progress(ball)
         return float(progress) if bool(found) else -1.0
+
+    def _path_fraction(self) -> float:
+        """The share of the path the ball has covered, at its last visible progress."""
+        return max(self._prev_progress, 0.0) / self._total_progress
 
     def _measure(self, ball: np.ndarray, action: np.ndarray):
         """Noisy history frame and noisy ball position."""

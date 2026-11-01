@@ -16,9 +16,9 @@ task_params:
   path_step: 50
   path_distance: 0.0001
   num_rays: 32
-  # Steps without reaching the goal before the ball is put back at the start, as on the
-  # robot.
-  max_episode_steps: 3000
+  # No step limit: the ball is put back at the start only at the goal (and after a fall),
+  # such that the behavior keeps learning where it got to.
+  max_episode_steps: null
   # Safe operable region R, as in environment/cyberrunner_recovery.yaml.
   recovery_hole_distance: 0.0138
   recovery_speed: 0.05

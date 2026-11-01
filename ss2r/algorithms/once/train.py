@@ -50,6 +50,24 @@ def _to_transition(chunk: Mapping[str, np.ndarray]) -> Transition:
     )
 
 
+def task_metrics(
+    window: Mapping[str, float],
+    counts: Mapping[str, float],
+    best: Mapping[str, float],
+) -> dict[str, float]:
+    """The task metrics of the environment: the maxima over the window and over the
+    run (best_), and the counts over the run."""
+    strip = lambda name: name.split("/", 1)[1]
+    maxima = {
+        f"online/{strip(name)}": value
+        for name, value in window.items()
+        if name.startswith("maxima/")
+    }
+    records = {f"online/best_{strip(name)}": value for name, value in best.items()}
+    totals = {f"online/{strip(name)}": total for name, total in counts.items()}
+    return maxima | records | totals
+
+
 class _SyncActor:
     """Runs the actor in the learner's process, for debugging and tests."""
 
@@ -345,6 +363,8 @@ def train(
     learner_steps = 0
     violations = 0.0
     costs = 0.0
+    counts: dict[str, float] = {}
+    best: dict[str, float] = {}
     next_log = log_every
     window: dict[str, float] = {}
     window_learner_steps = 0
@@ -368,7 +388,11 @@ def train(
                 violations += stats["violations"]
                 costs += stats.get("cost", 0.0)
                 for name, value in stats.items():
-                    if name == "max_step_time":
+                    if name.startswith("counts/"):
+                        counts[name] = counts.get(name, 0.0) + value
+                    if name.startswith("maxima/"):
+                        best[name] = max(best.get(name, value), value)
+                    if name == "max_step_time" or name.startswith("maxima/"):
                         window[name] = max(window.get(name, 0.0), value)
                     else:
                         window[name] = window.get(name, 0.0) + value
@@ -421,6 +445,7 @@ def train(
                 if "cost" in window:
                     # Environment steps with a cost, for environments with one.
                     metrics["online/costs"] = costs
+                metrics |= task_metrics(window, counts, best)
                 logging.info(metrics)
                 progress_fn(env_steps, metrics)
                 save(env_steps)
