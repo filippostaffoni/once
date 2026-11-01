@@ -118,7 +118,9 @@ def reset(self):
                     flush=True,
                 )
             if (
-                frames % (30 * 60) == 0 and seen < self.num_wait_steps
+                frames % (30 * 60) == 0
+                and seen < self.num_wait_steps
+                and getattr(self, "allow_shake", True)
             ):  # as Thomas: shake, reset
                 for client in (self.shake_client, self.client):
                     rclpy.spin_until_future_complete(

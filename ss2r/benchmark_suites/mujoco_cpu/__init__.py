@@ -1,7 +1,7 @@
 import functools
 from typing import Any, Callable, Mapping
 
-from ss2r.benchmark_suites.mujoco_cpu import cyberrunner
+from ss2r.benchmark_suites.mujoco_cpu import cyberrunner, cyberrunner_rig
 from ss2r.benchmark_suites.mujoco_cpu.cartpole import CartpoleSwingupCPU, RealEnv
 from ss2r.benchmark_suites.mujoco_cpu.go_to_goal import GoToGoalCPU
 from ss2r.benchmark_suites.mujoco_cpu.walker import WalkerWalkCPU
@@ -16,6 +16,7 @@ from ss2r.benchmark_suites.safety_gym import recovery as go_to_goal_recovery
 _envs = {
     "CartpoleSwingupCPU": CartpoleSwingupCPU,
     "CyberRunnerCPU": cyberrunner.CyberRunnerCPU,
+    "CyberRunnerRig": cyberrunner_rig.CyberRunnerRig,
     "GoToGoalCPU": GoToGoalCPU,
     "WalkerWalkCPU": WalkerWalkCPU,
 }
@@ -74,7 +75,7 @@ def get_recovery_fns(environment_cfg: Mapping[str, Any]) -> tuple[Callable, Call
             walker_recovery.violates,
             hard_upright=task_params["hard_upright"],
         )
-    elif task_name == "CyberRunnerCPU":
+    elif task_name in ("CyberRunnerCPU", "CyberRunnerRig"):
         recovery_reward_fn, violates_fn = cyberrunner.recovery_fns(task_params)
     else:
         raise ValueError(f"Unknown CPU environment {task_name}")

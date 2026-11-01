@@ -284,3 +284,33 @@ then use `CALIB=new_plate.json`.
 | Camera at 120 Hz or odd timing | Two camera nodes are running: stop everything and check with `pgrep` |
 | The wrong camera (e.g. the Mac's own) | `CYBERRUNNER_CAMERA=1 macos/run.sh hw` |
 | The motor adapter is not found | `CYBERRUNNER_PORT=/dev/cu.usbserial-XXXX macos/run.sh hw` |
+
+## ONCE on the rig
+
+The behaviour learns on the rig with the shield on: the learner runs on a GPU, the actor on the
+rig's Mac. `rig_bridge.py` runs in the rig's conda env; the rest runs in the once environment.
+Set `ONCE_REMOTE_TOKEN` to the same secret on both machines.
+
+1. Start the learner on the GPU with `+experiment=cyberrunner_once_rig` and
+   `prior.checkpoint_path=...`. It compiles, then waits for the robot.
+2. On the Mac, open the tunnel to its node: `ssh -N -L 5555:<node ip>:5555 euler`.
+3. Bring the rig up (`macos/run.sh hw`), then start the bridge:
+
+   ```bash
+   LAYOUT=easy LEVEL_AT_START=0 CALIB=$PWD/easy_plate.json WAIT_DEG=-2.5,-0.75 START=148,222 \
+     START_MM=15 python rig_bridge.py --log-dir D
+   ```
+
+4. Start the actor, with the same overrides as the learner, from the repository's root:
+   `PYTHONPATH=$PWD python cyberrunner_experiments/rig_actor.py +experiment=cyberrunner_once_rig`.
+
+- **At a goal** a sound plays, the board levels and training stops. Take the ball off the board and
+  put it at the start: training goes on once it has rested there for 1 s.
+- **After a fall** the lift brings the ball back. Training goes on meanwhile. `D/resets.jsonl` has
+  every reset, and `D/fall_*.png` the camera's last frame at each fall.
+- **If the motors drop out,** stop the actor and the bridge, restart the rig stack, and start the
+  bridge and the actor again: the learner waits for up to 10 minutes, and sends the full policy again.
+- The motors go to zero if the actor is silent for 100 ms, disconnects, or the bridge stops. The
+  actor stops if the learner is silent for 60 s.
+
+`sim_bridge.py` puts the CPU simulator behind the same bridge, to test everything but the rig.
